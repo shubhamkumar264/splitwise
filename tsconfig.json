@@ -36,7 +36,7 @@
     "convex/**/*.ts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
-, "app/(main)/dashboard/components/expense-summary.jsx", "convex/contacts.js", "hooks/use-convex-query.js", "convex/users.js", "components/expense-list.jsx", "app/(main)/expenses/new/components/expense-form.jsx"  ],
+, "app/(main)/dashboard/components/expense-summary.jsx", "convex/contacts.js", "hooks/use-convex-query.js", "convex/users.js", "components/expense-list.jsx", "app/(main)/expenses/new/components/expense-form.jsx", "convex/auth.config.js", "app/layout.js", "app/(main)/contacts/components/create-group-modal.jsx"  ],
   "exclude": [
     "node_modules"
   ]

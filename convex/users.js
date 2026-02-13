@@ -31,7 +31,6 @@ export const store = mutation({
 
     const tokenIdentifier = identity.tokenIdentifier;
 
-    // Check if user already exists
     const existingUser = await ctx.db
       .query("users")
       .withIndex("by_token", (q) =>
@@ -41,10 +40,8 @@ export const store = mutation({
 
     const safeName = getSafeName(identity);
 
-    /* ---------- USER EXISTS ---------- */
     if (existingUser) {
 
-      // Only update if something changed
       if (
         existingUser.name !== safeName ||
         existingUser.email !== identity.email ||
@@ -60,17 +57,52 @@ export const store = mutation({
       return existingUser._id;
     }
 
-    /* ---------- CREATE NEW USER ---------- */
-
     return await ctx.db.insert("users", {
       name: safeName,
       tokenIdentifier,
       email: identity.email,
       imageUrl: identity.pictureUrl,
+      upiId: undefined, // NEW FIELD
     });
   },
 });
 
+/* ============================================================
+   MUTATION: updateUpiId (NEW)
+============================================================ */
+
+export const updateUpiId = mutation({
+  args: {
+    upiId: v.string(),
+  },
+  handler: async (ctx, args) => {
+
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    // 🔥 Validate UPI format
+    const upiRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
+
+    if (!upiRegex.test(args.upiId)) {
+      throw new Error("Invalid UPI ID format");
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_token", (q) =>
+        q.eq("tokenIdentifier", identity.tokenIdentifier)
+      )
+      .unique();
+
+    if (!user) throw new Error("User not found");
+
+    await ctx.db.patch(user._id, {
+      upiId: args.upiId.toLowerCase(),
+    });
+
+    return true;
+  },
+});
 
 /* ============================================================
    QUERY: getCurrentUser
@@ -99,7 +131,6 @@ export const getCurrentUser = query({
     return user;
   },
 });
-
 
 /* ============================================================
    QUERY: searchUsers
@@ -138,7 +169,6 @@ export const searchUsers = query({
       )
       .collect();
 
-    // remove duplicates
     const users = [
       ...nameResults,
       ...emailResults.filter(
@@ -154,6 +184,7 @@ export const searchUsers = query({
         name: u.name,
         email: u.email,
         imageUrl: u.imageUrl,
+        upiId: u.upiId,
       }));
   },
 });

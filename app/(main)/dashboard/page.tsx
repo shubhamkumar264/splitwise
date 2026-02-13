@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { api } from "@/convex/_generated/api";
-import { useConvexQuery } from "@/hooks/use-convex-query";
+import { useConvexQuery, useConvexMutation } from "@/hooks/use-convex-query";
 import { BarLoader } from "react-spinners";
 import {
   Card,
@@ -11,33 +12,71 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Users, CreditCard, ChevronRight } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { PlusCircle, Users, ChevronRight, Pencil, Check, X } from "lucide-react";
 import Link from "next/link";
 import { ExpenseSummary } from "./components/expense-summary";
 import { BalanceSummary } from "./components/balance-summary";
 import { GroupList } from "./components/group-list";
+import { toast } from "sonner";
 
 export default function Dashboard() {
   const { data: balances, isLoading: balancesLoading } = useConvexQuery(
     api.dashboard.getUserBalances
   );
-
+  const { data: currentUser } = useConvexQuery(api.users.getCurrentUser);
   const { data: groups, isLoading: groupsLoading } = useConvexQuery(
     api.dashboard.getUserGroups
   );
-
   const { data: totalSpent, isLoading: totalSpentLoading } = useConvexQuery(
     api.dashboard.getTotalSpent
   );
-
   const { data: monthlySpending, isLoading: monthlySpendingLoading } =
     useConvexQuery(api.dashboard.getMonthlySpending);
 
+  const updateUpiId = useConvexMutation(api.users.updateUpiId);
+
+  // UPI edit state
+  const [isEditingUpi, setIsEditingUpi] = useState(false);
+  const [upiInput, setUpiInput]         = useState("");
+  const [upiSaving, setUpiSaving]       = useState(false);
+
   const isLoading =
-    balancesLoading ||
-    groupsLoading ||
-    totalSpentLoading ||
-    monthlySpendingLoading;
+    balancesLoading || groupsLoading || totalSpentLoading || monthlySpendingLoading;
+
+  const handleEditUpi = () => {
+    setUpiInput(currentUser?.upiId ?? "");
+    setIsEditingUpi(true);
+  };
+
+  const handleCancelUpi = () => {
+    setIsEditingUpi(false);
+    setUpiInput("");
+  };
+
+  const handleSaveUpi = async () => {
+    const trimmed = upiInput.trim();
+    if (!trimmed) {
+      toast.error("Please enter a valid UPI ID");
+      return;
+    }
+    // Basic UPI format check: something@something
+    if (!/^[\w.\-]+@[\w.\-]+$/.test(trimmed)) {
+      toast.error("Enter a valid UPI ID (e.g. name@upi)");
+      return;
+    }
+    setUpiSaving(true);
+    try {
+      await updateUpiId.mutate({ upiId: trimmed });
+      toast.success("UPI ID saved successfully!");
+      setIsEditingUpi(false);
+      setUpiInput("");
+    } catch (err) {
+      toast.error("Failed to save UPI ID: " + err.message);
+    } finally {
+      setUpiSaving(false);
+    }
+  };
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -47,7 +86,7 @@ export default function Dashboard() {
         </div>
       ) : (
         <>
-          <div className="flex  justify-between flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex justify-between flex-col sm:flex-row sm:items-center gap-4">
             <h1 className="text-5xl gradient-title">Dashboard</h1>
             <Button asChild>
               <Link href="/expenses/new">
@@ -59,6 +98,7 @@ export default function Dashboard() {
 
           {/* Balance overview cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Total Balance */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -69,26 +109,108 @@ export default function Dashboard() {
                 <div className="text-2xl font-bold">
                   {balances?.totalBalance > 0 ? (
                     <span className="text-green-600">
-                      +${balances?.totalBalance.toFixed(2)}
+                      +₹{balances?.totalBalance.toFixed(2)}
                     </span>
                   ) : balances?.totalBalance < 0 ? (
                     <span className="text-red-600">
-                      -${Math.abs(balances?.totalBalance).toFixed(2)}
+                      -₹{Math.abs(balances?.totalBalance).toFixed(2)}
                     </span>
                   ) : (
-                    <span>$0.00</span>
+                    <span>₹0.00</span>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   {balances?.totalBalance > 0
                     ? "You are owed money"
                     : balances?.totalBalance < 0
-                      ? "You owe money"
-                      : "All settled up!"}
+                    ? "You owe money"
+                    : "All settled up!"}
                 </p>
               </CardContent>
             </Card>
 
+            {/* Payment Methods / UPI ID */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  UPI ID
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {isEditingUpi ? (
+                  /* ── Edit mode ── */
+                  <div className="space-y-2">
+                    <Input
+                      value={upiInput}
+                      onChange={(e) => setUpiInput(e.target.value)}
+                      placeholder="yourname@upi"
+                      className="font-mono text-sm"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveUpi();
+                        if (e.key === "Escape") handleCancelUpi();
+                      }}
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        className="flex-1"
+                        onClick={handleSaveUpi}
+                        disabled={upiSaving}
+                      >
+                        <Check className="h-3.5 w-3.5 mr-1" />
+                        {upiSaving ? "Saving..." : "Save"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleCancelUpi}
+                        disabled={upiSaving}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : currentUser?.upiId ? (
+                  /* ── Has UPI ID ── */
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-mono font-medium truncate">
+                        {currentUser.upiId}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Used for settlements
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleEditUpi}
+                      className="shrink-0"
+                    >
+                      <Pencil className="h-3.5 w-3.5 mr-1" />
+                      Edit
+                    </Button>
+                  </div>
+                ) : (
+                  /* ── No UPI ID ── */
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm text-muted-foreground">No UPI ID added</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Add one so others can pay you
+                      </p>
+                    </div>
+                    <Button size="sm" onClick={handleEditUpi} className="shrink-0">
+                      <PlusCircle className="h-3.5 w-3.5 mr-1" />
+                      Add
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* You are owed */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -97,7 +219,7 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-green-600">
-                  ${balances?.youAreOwed.toFixed(2)}
+                  ₹{balances?.youAreOwed.toFixed(2)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   From {balances?.oweDetails?.youAreOwedBy?.length || 0} people
@@ -105,6 +227,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
+            {/* You owe */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -115,7 +238,7 @@ export default function Dashboard() {
                 {balances?.oweDetails?.youOwe?.length > 0 ? (
                   <>
                     <div className="text-2xl font-bold text-red-600">
-                      ${balances?.youOwe.toFixed(2)}
+                      ₹{balances?.youOwe.toFixed(2)}
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
                       To {balances?.oweDetails?.youOwe?.length || 0} people
@@ -123,7 +246,7 @@ export default function Dashboard() {
                   </>
                 ) : (
                   <>
-                    <div className="text-2xl font-bold">$0.00</div>
+                    <div className="text-2xl font-bold">₹0.00</div>
                     <p className="text-xs text-muted-foreground mt-1">
                       You don't owe anyone
                     </p>
@@ -137,7 +260,6 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left column */}
             <div className="lg:col-span-2 space-y-6">
-              {/* Expense summary */}
               <ExpenseSummary
                 monthlySpending={monthlySpending}
                 totalSpent={totalSpent}
@@ -146,7 +268,6 @@ export default function Dashboard() {
 
             {/* Right column */}
             <div className="space-y-6">
-              {/* Balance details */}
               <Card>
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
@@ -164,7 +285,6 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
 
-              {/* Groups */}
               <Card>
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
